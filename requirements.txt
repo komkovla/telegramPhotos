@@ -1,0 +1,16 @@
+# Telegram Bot API (async)
+python-telegram-bot==21.7
+
+# Google OAuth 2.0
+google-auth==2.36.0
+google-auth-oauthlib==1.2.0
+
+# HTTP client (async)
+httpx==0.28.1
+
+# Async SQLite
+aiosqlite==0.20.0
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.25.0
