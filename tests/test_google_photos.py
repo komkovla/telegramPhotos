@@ -218,6 +218,41 @@ class TestGetOrCreateAlbum:
         client._create_album.assert_called_once_with("New Album")
 
 
+class TestGetAlbumProductUrl:
+    async def test_returns_product_url(self):
+        client = _make_client()
+        client._get_access_token = AsyncMock(return_value="token")
+
+        resp = _mock_response(200, json_data={
+            "id": "album_1",
+            "title": "My Album",
+            "productUrl": "https://photos.google.com/lr/album/album_1",
+        })
+        http_client = AsyncMock(spec=httpx.AsyncClient)
+        http_client.request.return_value = resp
+        http_client.__aenter__ = AsyncMock(return_value=http_client)
+        http_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("bot.google_photos.httpx.AsyncClient", return_value=http_client):
+            url = await client.get_album_product_url("album_1")
+
+        assert url == "https://photos.google.com/lr/album/album_1"
+
+    async def test_raises_when_product_url_missing(self):
+        client = _make_client()
+        client._get_access_token = AsyncMock(return_value="token")
+
+        resp = _mock_response(200, json_data={"id": "album_1", "title": "My Album"})
+        http_client = AsyncMock(spec=httpx.AsyncClient)
+        http_client.request.return_value = resp
+        http_client.__aenter__ = AsyncMock(return_value=http_client)
+        http_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("bot.google_photos.httpx.AsyncClient", return_value=http_client):
+            with pytest.raises(GooglePhotosError, match="productUrl"):
+                await client.get_album_product_url("album_1")
+
+
 class TestUploadMedia:
     async def test_upload_calls_both_steps(self):
         client = _make_client()
