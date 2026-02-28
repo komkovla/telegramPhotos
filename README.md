@@ -11,7 +11,6 @@ A Telegram bot that automatically syncs media (photos, videos, circular/quick vi
 - Retry with exponential backoff on transient failures (network, API rate limits)
 - File size validation against Google Photos upload limits before downloading
 - Graceful handling of bot removal from groups
-- `/link` command — get the Google Photos album URL for a group to share with others
 - Optional allowlist to restrict which groups are synced
 - Local Bot API server support for files larger than 20 MB
 
@@ -49,14 +48,6 @@ A Telegram bot that automatically syncs media (photos, videos, circular/quick vi
 6. Bot looks up (or creates) a Google Photos album named after the group
 7. Bot uploads the media to that album (with retry on 429/5xx)
 8. Bot records the message ID in SQLite to prevent future duplicates
-
-### Bot Commands
-
-| Command | Where | Description |
-|---------|-------|-------------|
-| `/link` | Group chat | Replies with the Google Photos album URL for the group. Open the link in the browser (you must be signed into the Google account that owns the album) and use the Google Photos **Share** button to share the album with others. |
-
-> **Sharing limitation:** Google removed the Photos Library API sharing endpoints in March 2025. The bot cannot share albums programmatically — you must share them manually through the Google Photos UI after opening the `/link` URL. See [Sharing albums](#sharing-albums) in Troubleshooting for details.
 
 ## Prerequisites
 
@@ -308,7 +299,7 @@ telegramPhotos/
 │   ├── __init__.py
 │   ├── main.py              # Entry point, bot initialization
 │   ├── config.py            # Environment variable loading & validation
-│   ├── handlers.py          # Telegram message handlers (media sync, /link command, bot removal)
+│   ├── handlers.py          # Telegram message handlers (media sync, bot removal)
 │   ├── media.py             # Media download with retry and size validation
 │   ├── google_photos.py     # Google Photos API client (auth, albums, uploads, retry)
 │   └── database.py          # SQLite operations (dedup, album cache, title tracking)
@@ -381,21 +372,6 @@ After running `logout_from_telegram_org.py`, wait ~10 minutes before switching b
 ### Group renamed — old album stays
 
 When a group is renamed, the bot creates a new album with the new name. Previously synced media remains in the old album. This is by design — the Google Photos Library API (with `appendonly` scope) does not support renaming albums.
-
-### Sharing albums
-
-Google removed the Photos Library API sharing endpoints (`albums.share`, `albums.unshare`, and the `photoslibrary.sharing` scope) on March 31, 2025. The bot cannot share albums programmatically.
-
-To share an album:
-
-1. Send `/link` in the group chat to get the album URL
-2. Open the URL in a browser (you must be signed into the Google account that authorized the bot)
-3. Click the **Share** button in Google Photos and send the link to whoever you want
-
-**Important:** Sharing an album through the Google Photos UI may change the album's internal state in a way that breaks automatic sync. If sync stops working after sharing, check the logs for upload errors and try one of these fixes:
-
-- **Unshare the album** in Google Photos to restore its original state
-- **Clear the album cache** so the bot creates a fresh album on the next media message: stop the bot, open the SQLite database, and run `DELETE FROM album_cache WHERE group_title = '<your group name>';`, then restart
 
 ## License
 

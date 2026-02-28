@@ -4,13 +4,7 @@ import logging
 from typing import Any
 
 from telegram import ChatMemberUpdated, Update
-from telegram.ext import (
-    ChatMemberHandler,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
+from telegram.ext import ChatMemberHandler, ContextTypes, MessageHandler, filters
 
 from bot.google_photos import GooglePhotosClient, GooglePhotosError
 from bot.media import FileTooLargeError, download_media
@@ -142,67 +136,9 @@ async def handle_my_chat_member(
         )
 
 
-async def handle_link_command(
-    update: Update, context: ContextTypes.DEFAULT_TYPE,
-) -> None:
-    """Reply with the Google Photos album URL for this group."""
-    if not update.message or not update.effective_chat:
-        return
-
-    chat = update.effective_chat
-    if chat.type not in ("group", "supergroup"):
-        return
-
-    bot_data: dict[str, Any] = context.bot_data
-    db = bot_data.get("db")
-    google_photos: GooglePhotosClient | None = bot_data.get("google_photos")
-    config = bot_data.get("config")
-
-    if not db or not google_photos or not config:
-        logger.error("Handler missing db/google_photos/config in bot_data")
-        return
-
-    allowed = config.allowed_group_ids
-    if allowed and chat.id not in allowed:
-        return
-
-    chat_title = chat.title or f"Chat_{chat.id}"
-    if not chat_title.strip():
-        chat_title = f"Chat_{chat.id}"
-
-    album_id = await db.get_album_id(chat_title)
-    if not album_id:
-        await update.message.reply_text(
-            "No album found for this group. Send some media first."
-        )
-        return
-
-    try:
-        url = await google_photos.get_album_product_url(album_id)
-    except GooglePhotosError:
-        logger.exception(
-            "Failed to get album URL chat_id=%s album_id=%s", chat.id, album_id,
-        )
-        await update.message.reply_text(
-            "Could not retrieve the album link. The album may have been deleted."
-        )
-        return
-
-    await update.message.reply_text(
-        f"📷 Google Photos album for this group:\n{url}\n\n"
-        "Open the link (requires the Google account that owns the album) "
-        "and use the Share button in Google Photos to share it with others."
-    )
-
-
 def media_handler() -> MessageHandler[Update, ContextTypes.DEFAULT_TYPE]:
     """Return a MessageHandler for photo, video, and video_note."""
     return MessageHandler(MEDIA_FILTER, handle_media)
-
-
-def link_command_handler() -> CommandHandler:
-    """Return a CommandHandler for /link."""
-    return CommandHandler("link", handle_link_command)
 
 
 def my_chat_member_handler() -> ChatMemberHandler:

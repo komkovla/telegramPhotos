@@ -114,18 +114,6 @@ class GooglePhotosClient:
             raise GooglePhotosError("Create album response missing id", body=resp.text)
         return album_id
 
-    async def get_album_product_url(self, album_id: str) -> str:
-        """Return the Google Photos web URL for the given album."""
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await self._request_with_retry(
-                client, "GET", f"{BASE_URL}/albums/{album_id}",
-            )
-        data = resp.json()
-        url = data.get("productUrl")
-        if not url:
-            raise GooglePhotosError("Album response missing productUrl", body=resp.text)
-        return url
-
     async def upload_media(
         self,
         file_bytes: bytes,

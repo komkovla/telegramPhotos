@@ -9,7 +9,7 @@ from telegram.ext import ApplicationBuilder
 from bot.config import Config, get_log_level_int
 from bot.database import Database
 from bot.google_photos import GooglePhotosClient
-from bot.handlers import link_command_handler, media_handler, my_chat_member_handler
+from bot.handlers import media_handler, my_chat_member_handler
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,6 @@ def main() -> None:
             .local_mode(True)
         )
     application = builder.build()
-    application.add_handler(link_command_handler())
     application.add_handler(media_handler())
     application.add_handler(my_chat_member_handler())
 
