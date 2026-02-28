@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bot.config import Config
 from bot.database import Database
 from bot.google_photos import GooglePhotosClient, GooglePhotosError
-from bot.handlers import handle_media, handle_my_chat_member
+from bot.handlers import handle_link_command, handle_media, handle_my_chat_member
 from bot.media import FileTooLargeError, MediaContent
 
 
@@ -228,6 +228,68 @@ class TestGroupRename:
         # Chat title should be updated
         assert await db.get_chat_title(-100) == "New Name"
         gp.get_or_create_album.assert_called_once_with("New Name")
+
+
+class TestHandleLinkCommand:
+    async def test_returns_album_url(self, db: Database):
+        await db.set_album_id("Test Group", "album_123")
+        gp = AsyncMock(spec=GooglePhotosClient)
+        gp.get_album_product_url = AsyncMock(
+            return_value="https://photos.google.com/lr/album/album_123"
+        )
+
+        update = _make_update(chat_title="Test Group")
+        update.message.reply_text = AsyncMock()
+        ctx = _make_context(db, google_photos=gp)
+        await handle_link_command(update, ctx)
+
+        gp.get_album_product_url.assert_called_once_with("album_123")
+        update.message.reply_text.assert_called_once()
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "https://photos.google.com/lr/album/album_123" in reply_text
+
+    async def test_no_album_cached(self, db: Database):
+        gp = AsyncMock(spec=GooglePhotosClient)
+        update = _make_update(chat_title="Empty Group")
+        update.message.reply_text = AsyncMock()
+        ctx = _make_context(db, google_photos=gp)
+        await handle_link_command(update, ctx)
+
+        gp.get_album_product_url.assert_not_called()
+        update.message.reply_text.assert_called_once()
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "No album found" in reply_text
+
+    async def test_skips_private_chat(self, db: Database):
+        update = _make_update(chat_type="private")
+        update.message.reply_text = AsyncMock()
+        ctx = _make_context(db)
+        await handle_link_command(update, ctx)
+        update.message.reply_text.assert_not_called()
+
+    async def test_skips_disallowed_group(self, db: Database):
+        config = _make_config(allowed_group_ids=(-200,))
+        update = _make_update(chat_id=-100)
+        update.message.reply_text = AsyncMock()
+        ctx = _make_context(db, config=config)
+        await handle_link_command(update, ctx)
+        update.message.reply_text.assert_not_called()
+
+    async def test_handles_google_photos_error(self, db: Database):
+        await db.set_album_id("Test Group", "album_gone")
+        gp = AsyncMock(spec=GooglePhotosClient)
+        gp.get_album_product_url = AsyncMock(
+            side_effect=GooglePhotosError("not found", status_code=404)
+        )
+
+        update = _make_update(chat_title="Test Group")
+        update.message.reply_text = AsyncMock()
+        ctx = _make_context(db, google_photos=gp)
+        await handle_link_command(update, ctx)
+
+        update.message.reply_text.assert_called_once()
+        reply_text = update.message.reply_text.call_args[0][0]
+        assert "Could not retrieve" in reply_text
 
 
 class TestHandleMyChatMember:
