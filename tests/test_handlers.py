@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from bot.config import Config
 from bot.database import Database
-from bot.google_photos import GooglePhotosClient, GooglePhotosError
+from bot.google_photos import GooglePhotosClient, GooglePhotosError, TokenRefreshError
 from bot.handlers import handle_media, handle_my_chat_member
 from bot.media import FileTooLargeError, MediaContent
 
@@ -13,7 +13,10 @@ from bot.media import FileTooLargeError, MediaContent
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
-def _make_config(allowed_group_ids: tuple[int, ...] = ()) -> Config:
+def _make_config(
+    allowed_group_ids: tuple[int, ...] = (),
+    admin_chat_id: int | None = None,
+) -> Config:
     return Config(
         telegram_bot_token="token",
         google_client_id="cid",
@@ -23,6 +26,7 @@ def _make_config(allowed_group_ids: tuple[int, ...] = ()) -> Config:
         allowed_group_ids=allowed_group_ids,
         db_path="/tmp/test.db",
         log_level="INFO",
+        admin_chat_id=admin_chat_id,
     )
 
 
@@ -199,6 +203,72 @@ class TestHandleMediaErrors:
         ctx = _make_context(db)
         await handle_media(update, ctx)
         assert await db.is_processed(-100, 9) is False
+
+
+class TestTokenRefreshError:
+    @patch("bot.handlers.download_media")
+    async def test_token_refresh_error_sends_admin_notification(
+        self, mock_download, db: Database
+    ):
+        mock_download.return_value = MediaContent(
+            data=b"x", filename="p.jpg", mime_type="image/jpeg",
+        )
+        gp = AsyncMock(spec=GooglePhotosClient)
+        gp.get_or_create_album = AsyncMock(return_value="album_1")
+        gp.upload_media = AsyncMock(
+            side_effect=TokenRefreshError("Token expired")
+        )
+
+        config = _make_config(admin_chat_id=12345)
+        update = _make_update(chat_id=-100, message_id=20)
+        ctx = _make_context(db, google_photos=gp, config=config)
+        await handle_media(update, ctx)
+
+        ctx.bot.send_message.assert_called_once()
+        call_kwargs = ctx.bot.send_message.call_args
+        assert call_kwargs.kwargs["chat_id"] == 12345
+        assert "expired" in call_kwargs.kwargs["text"].lower()
+        assert await db.is_processed(-100, 20) is False
+
+    @patch("bot.handlers.download_media")
+    async def test_token_refresh_error_no_admin_chat_id(
+        self, mock_download, db: Database
+    ):
+        mock_download.return_value = MediaContent(
+            data=b"x", filename="p.jpg", mime_type="image/jpeg",
+        )
+        gp = AsyncMock(spec=GooglePhotosClient)
+        gp.get_or_create_album = AsyncMock(return_value="album_1")
+        gp.upload_media = AsyncMock(
+            side_effect=TokenRefreshError("Token expired")
+        )
+
+        config = _make_config(admin_chat_id=None)
+        update = _make_update(chat_id=-100, message_id=21)
+        ctx = _make_context(db, google_photos=gp, config=config)
+        await handle_media(update, ctx)
+
+        ctx.bot.send_message.assert_not_called()
+        assert await db.is_processed(-100, 21) is False
+
+    @patch("bot.handlers.download_media")
+    async def test_token_refresh_error_notification_failure_does_not_crash(
+        self, mock_download, db: Database
+    ):
+        mock_download.return_value = MediaContent(
+            data=b"x", filename="p.jpg", mime_type="image/jpeg",
+        )
+        gp = AsyncMock(spec=GooglePhotosClient)
+        gp.get_or_create_album = AsyncMock(return_value="album_1")
+        gp.upload_media = AsyncMock(
+            side_effect=TokenRefreshError("Token expired")
+        )
+
+        config = _make_config(admin_chat_id=12345)
+        update = _make_update(chat_id=-100, message_id=22)
+        ctx = _make_context(db, google_photos=gp, config=config)
+        ctx.bot.send_message = AsyncMock(side_effect=Exception("Telegram down"))
+        await handle_media(update, ctx)  # should not raise
 
 
 class TestGroupRename:

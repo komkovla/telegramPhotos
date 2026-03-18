@@ -5,9 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 
+from google.auth.exceptions import RefreshError
+
 from bot.google_photos import (
     GooglePhotosClient,
     GooglePhotosError,
+    TokenRefreshError,
     MAX_RETRIES,
     RETRYABLE_STATUS_CODES,
 )
@@ -27,6 +30,29 @@ class TestGooglePhotosError:
         err = GooglePhotosError("fail")
         assert err.status_code is None
         assert err.body is None
+
+
+class TestTokenRefreshError:
+    def test_is_subclass_of_google_photos_error(self):
+        err = TokenRefreshError("token expired")
+        assert isinstance(err, GooglePhotosError)
+
+    @patch("bot.google_photos.Request")
+    @patch("bot.google_photos.Credentials")
+    async def test_get_access_token_raises_token_refresh_error(
+        self, mock_creds_cls, mock_request
+    ):
+        mock_creds = MagicMock()
+        mock_creds.expired = True
+        mock_creds.valid = False
+        mock_creds.refresh.side_effect = RefreshError("invalid_grant")
+        mock_creds_cls.return_value = mock_creds
+
+        client = GooglePhotosClient("cid", "csecret", "rtoken")
+        client._credentials = mock_creds
+
+        with pytest.raises(TokenRefreshError, match="refresh failed"):
+            await client._get_access_token()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────

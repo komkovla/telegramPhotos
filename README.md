@@ -110,7 +110,7 @@ The Google Photos Library API requires OAuth 2.0 **user credentials** (not a ser
 6. Click **Save and Continue** through the remaining steps
 7. On the **Test users** page, add the Google account that owns the Photos library you want to sync to
 
-> **Note:** While the app is in "Testing" publishing status, only test users you explicitly add can authorize. The refresh token works indefinitely for test users — no need to publish the app.
+> **Note:** While the app is in "Testing" publishing status, only test users you explicitly add can authorize. However, **Google revokes refresh tokens for Testing-mode apps every 7 days**. To avoid this, change the publishing status to **Production** (see [Token refresh fails](#token-refresh-fails) below). You do not need to go through Google's verification process if only your own account uses the app — you'll just see an "unverified app" warning during authorization.
 
 #### Create OAuth credentials
 
@@ -183,6 +183,7 @@ All configuration is via environment variables (set in `.env`):
 | `GOOGLE_REFRESH_TOKEN` | Yes | — | Long-lived refresh token (obtained via `scripts/obtain_token.py`) |
 | `ALLOWED_GROUP_IDS` | No | *(all groups)* | Comma-separated list of group chat IDs to restrict syncing |
 | `DB_PATH` | No | `/data/bot.db` | SQLite database file path |
+| `ADMIN_CHAT_ID` | No | — | Telegram chat ID to receive admin alerts (e.g. token expiry). Find yours via [@userinfobot](https://t.me/userinfobot). |
 | `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 
 ## Deployment
@@ -354,11 +355,24 @@ The bot validates all required environment variables at startup. Check that `.en
 
 ### Token refresh fails
 
-If the Google refresh token stops working:
+Google refresh tokens can stop working for several reasons. The most common:
 
-1. Verify the Google Cloud project still exists and the Photos Library API is enabled
-2. Check that your Google account is still listed as a test user (if the app is in "Testing" status)
-3. Re-run `python scripts/obtain_token.py` to get a new refresh token
+**App is in "Testing" mode (7-day expiry):** Google automatically revokes refresh tokens for apps with "Testing" publishing status every 7 days. This is the most likely cause if your token stops working periodically. To fix permanently:
+
+1. Go to **Google Cloud Console** → **APIs & Services** → **OAuth consent screen**
+2. Click **Publish App** to change status from "Testing" to **"Production"**
+3. For personal-use apps you do **not** need to complete Google's verification — your app will show an "unverified app" warning during authorization, but tokens will no longer expire after 7 days
+4. Re-run `python scripts/obtain_token.py` to get a new long-lived refresh token
+
+**Other causes:**
+
+1. The Google Cloud project was deleted or the Photos Library API was disabled
+2. Your Google account was removed from the test users list (if still in Testing mode)
+3. You revoked access via [Google Account permissions](https://myaccount.google.com/permissions)
+
+**Admin notifications:** Set `ADMIN_CHAT_ID` in `.env` to receive a Telegram message when the token fails, so you don't have to discover the problem from missing uploads.
+
+To recover, re-run `python scripts/obtain_token.py` to get a new refresh token and update `GOOGLE_REFRESH_TOKEN` in `.env`, then restart the bot.
 
 ### Bot API server: "bot logged out" issues
 

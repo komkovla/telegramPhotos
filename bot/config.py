@@ -23,6 +23,7 @@ class Config:
     allowed_group_ids: tuple[int, ...]
     db_path: str
     log_level: str
+    admin_chat_id: int | None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -41,6 +42,7 @@ class Config:
         allowed = _allowed_group_ids(os.environ.get("ALLOWED_GROUP_IDS", ""))
         db_path = os.environ.get("DB_PATH", "/data/bot.db").strip() or "/data/bot.db"
         log_level = _log_level(os.environ.get("LOG_LEVEL", "INFO"))
+        admin_chat_id = _optional_int("ADMIN_CHAT_ID")
 
         return cls(
             telegram_bot_token=token,
@@ -51,6 +53,7 @@ class Config:
             allowed_group_ids=allowed,
             db_path=db_path,
             log_level=log_level,
+            admin_chat_id=admin_chat_id,
         )
 
 
@@ -76,6 +79,16 @@ def _allowed_group_ids(raw: str) -> tuple[int, ...]:
                 f"ALLOWED_GROUP_IDS must be comma-separated integers, got: {part!r}"
             )
     return tuple(ids)
+
+
+def _optional_int(name: str) -> int | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be an integer, got: {raw!r}")
 
 
 def _log_level(raw: str) -> str:

@@ -5,8 +5,9 @@ import logging
 from typing import Any
 
 import httpx
-from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,10 @@ class GooglePhotosError(Exception):
         super().__init__(message)
         self.status_code = status_code
         self.body = body
+
+
+class TokenRefreshError(GooglePhotosError):
+    """Raised when the OAuth refresh token is expired or revoked."""
 
 
 class GooglePhotosClient:
@@ -53,7 +58,14 @@ class GooglePhotosClient:
     async def _get_access_token(self) -> str:
         """Return a valid access token, refreshing if necessary."""
         if self._credentials.expired or not self._credentials.valid:
-            await asyncio.to_thread(self._credentials.refresh, Request())
+            try:
+                await asyncio.to_thread(self._credentials.refresh, Request())
+            except RefreshError as exc:
+                raise TokenRefreshError(
+                    f"Google OAuth token refresh failed: {exc}. "
+                    "The refresh token may be expired or revoked. "
+                    "Re-run scripts/obtain_token.py to get a new token."
+                ) from exc
         return self._credentials.token
 
     def _auth_headers(self, access_token: str) -> dict[str, str]:

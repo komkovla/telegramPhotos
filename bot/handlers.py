@@ -6,7 +6,7 @@ from typing import Any
 from telegram import ChatMemberUpdated, Update
 from telegram.ext import ChatMemberHandler, ContextTypes, MessageHandler, filters
 
-from bot.google_photos import GooglePhotosClient, GooglePhotosError
+from bot.google_photos import GooglePhotosClient, GooglePhotosError, TokenRefreshError
 from bot.media import FileTooLargeError, download_media
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,26 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             content.mime_type,
             album_id,
         )
+    except TokenRefreshError as exc:
+        logger.critical(
+            "Google OAuth token refresh failed chat_id=%s message_id=%s error=%s",
+            chat_id, message_id, exc,
+        )
+        admin_chat_id = config.admin_chat_id
+        if admin_chat_id:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_chat_id,
+                    text=(
+                        "\u26a0\ufe0f Google Photos token expired or revoked.\n\n"
+                        "All photo uploads are failing. "
+                        "Re-run scripts/obtain_token.py to get a new refresh token "
+                        "and update GOOGLE_REFRESH_TOKEN in .env, then restart the bot."
+                    ),
+                )
+            except Exception:
+                logger.exception("Failed to send admin notification")
+        return
     except GooglePhotosError as exc:
         logger.error(
             "Google Photos upload failed chat_id=%s message_id=%s "
